@@ -872,6 +872,12 @@ const firebaseConfig = {
         authView.style.display = '';
         appView.style.display  = 'none';
         tasks = [];
+        // Reset auth form
+        authEmail.value = '';
+        authPass.value = '';
+        authSubmit.disabled = false;
+        authSubmit.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+        hideAuthMessages();
       }
     });
 
