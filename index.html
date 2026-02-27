@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tasks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    /* ── CSS Variables ── */
+    :root {
+      --bg:       #0a0a0b;
+      --surface:  #111114;
+      --border:   #222228;
+      --border2:  #2e2e38;
+      --text:     #e8e8f0;
+      --muted:    #55555f;
+      --accent:   #7c6aff;
+      --accent2:  #a695ff;
+      --red:      #ff4f4f;
+      --green:    #3ecf72;
+      --orange:   #f5a623;
+      --yellow:   #f5d769;
+      --task-color:        #9898a8;
+      --task-done-color:   #3a3a48;
+      --dim-color:         #3a3a48;
+      --dim-hover-color:   #707080;
+      --item-border:       rgba(34,34,40,0.7);
+      --picker-filter:     invert(0.35);
+    }
+
+    body.light {
+      --bg:       #e8e8f0;
+      --surface:  #f8f8fc;
+      --border:   #b8b8cc;
+      --border2:  #9090ac;
+      --text:     #0c0c1e;
+      --muted:    #50507a;
+      --accent:   #4a38cf;
+      --accent2:  #6a58ef;
+      --red:      #bb2222;
+      --green:    #127a3e;
+      --orange:   #a05e00;
+      --yellow:   #7a6000;
+      --task-color:        #18183a;
+      --task-done-color:   #8888aa;
+      --dim-color:         #58587a;
+      --dim-hover-color:   #2a2a4a;
+      --item-border:       rgba(120,120,160,0.45);
+      --picker-filter:     invert(0);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 56px 16px;
+      min-height: 100vh;
+      transition: background 0.25s, color 0.25s;
+    }
+
+    /* ─────────────────────────────────────────
+       AUTH VIEW
+    ───────────────────────────────────────── */
+    .auth-wrap {
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .auth-logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 36px;
+    }
+
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px;
+    }
+
+    .auth-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .auth-tab {
+      flex: 1;
+      background: none;
+      border: none;
+      padding: 8px 0;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.18s;
+    }
+
+    .auth-tab.active {
+      color: var(--accent2);
+      border-bottom-color: var(--accent);
+    }
+
+    .auth-field {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .auth-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      border-radius: 6px;
+      padding: 11px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .auth-input::placeholder { color: var(--muted); }
+    .auth-input:focus        { border-color: var(--accent); }
+
+    .auth-submit {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      margin-bottom: 14px;
+    }
+    .auth-submit:hover  { background: var(--accent2); }
+    .auth-submit:active { transform: scale(0.98); }
+    .auth-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 0.06em;
+      margin-bottom: 14px;
+    }
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .google-btn {
+      width: 100%;
+      padding: 11px;
+      background: transparent;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: background 0.18s, border-color 0.18s;
+    }
+    .google-btn:hover { background: rgba(255,255,255,0.04); border-color: var(--accent); }
+
+    .google-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .auth-error {
+      background: rgba(255,79,79,0.1);
+      border: 1px solid rgba(255,79,79,0.25);
+      color: var(--red);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 0.8rem;
+      margin-bottom: 14px;
+      display: none;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .auth-error.show { display: block; }
+
+    .auth-success {
+      background: rgba(62,207,114,0.1);
+      border: 1px solid rgba(62,207,114,0.25);
+      color: var(--green);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 0.8rem;
+      margin-bottom: 14px;
+      display: none;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .auth-success.show { display: block; }
+
+    /* ─────────────────────────────────────────
+       APP VIEW
+    ───────────────────────────────────────── */
+    .container {
+      width: 100%;
+      max-width: 460px;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 40px;
+      gap: 10px;
+    }
+
+    h1 {
+      font-family: 'Space Mono', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    #user-email-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #theme-btn, #logout-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 0.04em;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    #theme-btn:hover  { border-color: var(--border2); color: var(--text); }
+    #logout-btn:hover { border-color: rgba(255,79,79,0.4); color: var(--red); }
+
+    /* Input group */
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+
+    .input-row { display: flex; gap: 8px; }
+
+    #task-input, #deadline-input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 300;
+      border-radius: 6px;
+      padding: 11px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      flex: 1;
+    }
+    #task-input::placeholder { color: var(--muted); }
+    #deadline-input { color: var(--muted); }
+    #deadline-input::-webkit-calendar-picker-indicator { filter: var(--picker-filter); cursor: pointer; }
+    #task-input:focus, #deadline-input:focus { border-color: var(--accent); }
+
+    #add-btn {
+      padding: 11px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    #add-btn:hover  { background: var(--accent2); }
+    #add-btn:active { transform: scale(0.97); }
+    #add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+
+    .filter-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      background: transparent;
+      border-radius: 20px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 400;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.18s;
+      white-space: nowrap;
+    }
+    .filter-btn:hover { border-color: var(--border2); color: var(--text); }
+    .filter-btn.active {
+      border-color: var(--accent);
+      color: var(--accent2);
+      background: rgba(124,106,255,0.1);
+    }
+
+    /* Task list */
+    #task-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      min-height: 40px;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--item-border);
+      transition: opacity 0.2s;
+    }
+    .task-item:first-child { border-top: 1px solid var(--item-border); }
+
+    .task-item input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 17px;
+      height: 17px;
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+      position: relative;
+      transition: all 0.2s;
+    }
+    .task-item input[type="checkbox"]:hover   { border-color: var(--accent); }
+    .task-item input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+    .task-item input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 4px; top: 1px;
+      width: 5px; height: 9px;
+      border: 2px solid #fff;
+      border-top: none; border-left: none;
+      transform: rotate(45deg);
+    }
+
+    .task-meta {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .task-text {
+      font-size: 0.9rem;
+      font-weight: 400;
+      color: var(--task-color);
+      word-break: break-word;
+      transition: color 0.2s;
+    }
+
+    /* Deadline badge */
+    .deadline-badge {
+      display: inline-block;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.66rem;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      width: fit-content;
+    }
+    .deadline-badge.overdue  { background: rgba(255,79,79,0.12);   color: var(--red);    border: 1px solid rgba(255,79,79,0.2); }
+    .deadline-badge.today    { background: rgba(255,79,79,0.12);   color: var(--red);    border: 1px solid rgba(255,79,79,0.2); }
+    .deadline-badge.soon     { background: rgba(245,166,35,0.1);   color: var(--orange); border: 1px solid rgba(245,166,35,0.2); }
+    .deadline-badge.upcoming { background: rgba(245,215,105,0.08); color: var(--yellow); border: 1px solid rgba(245,215,105,0.15); }
+
+    .task-item.done .task-text      { text-decoration: line-through; color: var(--task-done-color); }
+    .task-item.done .deadline-badge { opacity: 0.3; }
+
+    /* Task action buttons */
+    .task-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
+    .edit-btn, .delete-btn {
+      background: none;
+      border: none;
+      color: transparent;
+      font-size: 0.85rem;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      transition: color 0.2s;
+      line-height: 1;
+    }
+    .task-item:hover .edit-btn   { color: var(--border2); }
+    .task-item:hover .delete-btn { color: var(--border2); }
+    .edit-btn:hover   { color: var(--accent) !important; }
+    .delete-btn:hover { color: var(--red) !important; }
+
+    /* Inline edit */
+    .edit-input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      border-radius: 4px;
+      padding: 5px 8px;
+      outline: none;
+    }
+
+    .edit-deadline {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.8rem;
+      border-radius: 4px;
+      padding: 4px 6px;
+      outline: none;
+      margin-top: 5px;
+    }
+    .edit-deadline:focus { border-color: var(--accent); }
+    .edit-deadline::-webkit-calendar-picker-indicator { filter: var(--picker-filter); cursor: pointer; }
+
+    .edit-actions { display: flex; gap: 6px; margin-top: 7px; }
+
+    .edit-save-btn, .edit-cancel-btn {
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      border: 1px solid;
+      transition: all 0.15s;
+      letter-spacing: 0.04em;
+    }
+    .edit-save-btn   { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .edit-save-btn:hover { background: var(--accent2); border-color: var(--accent2); }
+    .edit-cancel-btn { background: transparent; color: var(--muted); border-color: var(--border); }
+    .edit-cancel-btn:hover { color: var(--text); border-color: var(--border2); }
+
+    /* Delete confirm */
+    .confirm-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+    .confirm-yes-btn {
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      border: 1px solid rgba(255,79,79,0.4);
+      background: rgba(255,79,79,0.1);
+      color: var(--red);
+      transition: all 0.15s;
+    }
+    .confirm-yes-btn:hover { background: rgba(255,79,79,0.22); }
+    .confirm-no-btn {
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .confirm-no-btn:hover { border-color: var(--border2); color: var(--text); }
+
+    .empty-msg {
+      text-align: center;
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      padding: 32px 0;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 0.04em;
+    }
+
+    #clear-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 0.04em;
+      padding: 0;
+      transition: color 0.2s;
+    }
+    #clear-btn:hover { color: var(--red); }
+
+    /* Backup bar */
+    .backup-bar {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(34,34,40,0.6);
+      display: flex;
+      gap: 8px;
+    }
+    body.light .backup-bar { border-top-color: rgba(120,120,160,0.4); }
+
+    .backup-btn {
+      flex: 1;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(34,34,40,0.8);
+      background: transparent;
+      font-size: 0.75rem;
+      cursor: pointer;
+      color: var(--dim-color);
+      transition: all 0.18s;
+      font-family: 'DM Sans', sans-serif;
+    }
+    body.light .backup-btn { border-color: rgba(120,120,160,0.6); }
+    .backup-btn:hover { border-color: var(--border2); color: var(--dim-hover-color); }
+
+    /* Loading spinner */
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Global inline toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+      z-index: 999;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── AUTH VIEW ── -->
+  <div id="auth-view" class="auth-wrap">
+    <p class="auth-logo">Tasks</p>
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Sign In</button>
+        <button class="auth-tab" data-tab="signup">Sign Up</button>
+      </div>
+      <div id="auth-error"   class="auth-error"></div>
+      <div id="auth-success" class="auth-success"></div>
+      <div class="auth-field">
+        <input type="email"    id="auth-email"    class="auth-input" placeholder="Email address" autocomplete="email" />
+        <input type="password" id="auth-password" class="auth-input" placeholder="Password" autocomplete="current-password" />
+      </div>
+      <button id="auth-submit" class="auth-submit">Sign In</button>
+      <div class="auth-divider">or</div>
+      <button id="google-btn" class="google-btn">
+        <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Continue with Google
+      </button>
+    </div>
+  </div>
+
+  <!-- ── APP VIEW ── -->
+  <div id="app-view" style="display:none">
+    <div class="container">
+      <div class="header-row">
+        <h1>Tasks</h1>
+        <div class="header-actions">
+          <span id="user-email-label"></span>
+          <button id="theme-btn">☀ Light</button>
+          <button id="logout-btn">Sign out</button>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <div class="input-row">
+          <input type="text" id="task-input" placeholder="Add a new task…" maxlength="120" />
+        </div>
+        <div class="input-row">
+          <input type="date" id="deadline-input" title="Deadline (optional)" />
+          <button id="add-btn">+ Add</button>
+        </div>
+      </div>
+
+      <div class="filters">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="active">Active</button>
+        <button class="filter-btn" data-filter="done">Done</button>
+        <button class="filter-btn" data-filter="has-deadline">With Deadline</button>
+        <button class="filter-btn" data-filter="no-deadline">No Deadline</button>
+      </div>
+
+      <ul id="task-list"></ul>
+
+      <div class="footer">
+        <span id="remaining">0 tasks left</span>
+        <button id="clear-btn">Clear completed</button>
+      </div>
+
+      <div class="backup-bar">
+        <button class="backup-btn" id="export-btn">&#8595; Export JSON</button>
+        <button class="backup-btn" id="import-btn">&#8593; Import JSON</button>
+        <input type="file" id="import-file" accept=".json" style="display:none" />
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    /* ─────────────────────────────────────────────────────────────────
+       CONFIG — Replace with your Supabase project values
+    ───────────────────────────────────────────────────────────────── */
+    const SUPABASE_URL      = 'https://gxugaffxjzawzdtnroph.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_dYt-zVXvU-ylEiUVlKUNgA_3W_2E_rt';
+    
+    /* ─────────────────────────────────────────────────────────────────
+       INIT
+    ───────────────────────────────────────────────────────────────── */
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let tasks         = [];
+    let currentFilter = 'all';
+
+    /* DOM – Auth */
+    const authView    = document.getElementById('auth-view');
+    const appView     = document.getElementById('app-view');
+    const authTabs    = document.querySelectorAll('.auth-tab');
+    const authEmail   = document.getElementById('auth-email');
+    const authPass    = document.getElementById('auth-password');
+    const authSubmit  = document.getElementById('auth-submit');
+    const googleBtn   = document.getElementById('google-btn');
+    const authError   = document.getElementById('auth-error');
+    const authSuccess = document.getElementById('auth-success');
+
+    /* DOM – App */
+    const taskInput     = document.getElementById('task-input');
+    const deadlineInput = document.getElementById('deadline-input');
+    const addBtn        = document.getElementById('add-btn');
+    const taskList      = document.getElementById('task-list');
+    const remaining     = document.getElementById('remaining');
+    const clearBtn      = document.getElementById('clear-btn');
+    const filterBtns    = document.querySelectorAll('.filter-btn');
+    const exportBtn     = document.getElementById('export-btn');
+    const importBtn     = document.getElementById('import-btn');
+    const importFile    = document.getElementById('import-file');
+    const themeBtn      = document.getElementById('theme-btn');
+    const logoutBtn     = document.getElementById('logout-btn');
+    const userLabel     = document.getElementById('user-email-label');
+    const toastEl       = document.getElementById('toast');
+
+    deadlineInput.min = new Date().toISOString().split('T')[0];
+
+    /* ─────────────────────────────────────────────────────────────────
+       TOAST
+    ───────────────────────────────────────────────────────────────── */
+    let toastTimer = null;
+    function showToast(msg, duration = 2500) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       THEME
+    ───────────────────────────────────────────────────────────────── */
+    function applyTheme(light) {
+      document.body.classList.toggle('light', light);
+      themeBtn.textContent = light ? '☾ Dark' : '☀ Light';
+      localStorage.setItem('theme', light ? 'light' : 'dark');
+    }
+    themeBtn.addEventListener('click', () => applyTheme(!document.body.classList.contains('light')));
+    applyTheme(localStorage.getItem('theme') === 'light');
+
+    /* ─────────────────────────────────────────────────────────────────
+       AUTH TABS
+    ───────────────────────────────────────────────────────────────── */
+    let authMode = 'login';
+
+    authTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        authTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        authMode = tab.dataset.tab;
+        authSubmit.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+        authPass.autocomplete  = authMode === 'login' ? 'current-password' : 'new-password';
+        hideAuthMessages();
+      });
+    });
+
+    function showAuthError(msg) {
+      authError.textContent = msg;
+      authError.classList.add('show');
+      authSuccess.classList.remove('show');
+    }
+    function showAuthSuccess(msg) {
+      authSuccess.textContent = msg;
+      authSuccess.classList.add('show');
+      authError.classList.remove('show');
+    }
+    function hideAuthMessages() {
+      authError.classList.remove('show');
+      authSuccess.classList.remove('show');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       AUTH ACTIONS
+    ───────────────────────────────────────────────────────────────── */
+    authSubmit.addEventListener('click', async () => {
+      const email    = authEmail.value.trim();
+      const password = authPass.value;
+      if (!email || !password) { showAuthError('Please enter email and password.'); return; }
+
+      authSubmit.disabled = true;
+      authSubmit.innerHTML = '<span class="spinner"></span>' + (authMode === 'login' ? 'Signing in…' : 'Creating account…');
+      hideAuthMessages();
+
+      try {
+        if (authMode === 'login') {
+          const { error } = await sb.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+        } else {
+          const { error } = await sb.auth.signUp({ email, password });
+          if (error) throw error;
+          showAuthSuccess('Account created! Check your email to confirm, then sign in.');
+          authSubmit.disabled = false;
+          authSubmit.textContent = 'Create Account';
+          return;
+        }
+      } catch (e) {
+        showAuthError(e.message);
+        authSubmit.disabled = false;
+        authSubmit.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+      }
+    });
+
+    authEmail.addEventListener('keydown',  e => { if (e.key === 'Enter') authPass.focus(); });
+    authPass.addEventListener('keydown',   e => { if (e.key === 'Enter') authSubmit.click(); });
+
+    googleBtn.addEventListener('click', async () => {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.href }
+      });
+      if (error) showAuthError(error.message);
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      await sb.auth.signOut();
+    });
+
+    /* ─────────────────────────────────────────────────────────────────
+       AUTH STATE → SWITCH VIEWS
+    ───────────────────────────────────────────────────────────────── */
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        authView.style.display = 'none';
+        appView.style.display  = '';
+        userLabel.textContent  = session.user.email;
+        await loadTasks();
+        render();
+      } else {
+        authView.style.display = '';
+        appView.style.display  = 'none';
+        tasks = [];
+      }
+    });
+
+    /* ─────────────────────────────────────────────────────────────────
+       SUPABASE TASK CRUD
+    ───────────────────────────────────────────────────────────────── */
+    async function loadTasks() {
+      const { data, error } = await sb
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) { showToast('Failed to load tasks.'); return; }
+      tasks = data;
+    }
+
+    async function addTask() {
+      const text     = taskInput.value.trim();
+      const deadline = deadlineInput.value || null;
+      if (!text) return;
+
+      addBtn.disabled = true;
+      const { data, error } = await sb.from('tasks').insert({ text, deadline }).select().single();
+      addBtn.disabled = false;
+
+      if (error) { showToast('Could not add task.'); return; }
+      tasks.push(data);
+      taskInput.value     = '';
+      deadlineInput.value = '';
+      render();
+    }
+
+    async function toggle(id) {
+      const task    = tasks.find(t => t.id === id);
+      const newDone = !task.done;
+      const { error } = await sb.from('tasks').update({ done: newDone }).eq('id', id);
+      if (error) { showToast('Could not update task.'); return; }
+      tasks = tasks.map(t => t.id === id ? { ...t, done: newDone } : t);
+      render();
+    }
+
+    async function remove(id) {
+      const { error } = await sb.from('tasks').delete().eq('id', id);
+      if (error) { showToast('Could not delete task.'); return; }
+      tasks = tasks.filter(t => t.id !== id);
+      render();
+    }
+
+    async function updateTask(id, newText, newDeadline) {
+      const { error } = await sb.from('tasks').update({ text: newText, deadline: newDeadline }).eq('id', id);
+      if (error) { showToast('Could not save changes.'); return; }
+      tasks = tasks.map(t => t.id === id ? { ...t, text: newText, deadline: newDeadline } : t);
+      render();
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       DEADLINE STATUS
+    ───────────────────────────────────────────────────────────────── */
+    function deadlineStatus(deadline) {
+      if (!deadline) return null;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const due   = new Date(deadline + 'T00:00:00');
+      const diff  = Math.round((due - today) / 86400000);
+      if (diff < 0)   return { label: 'Overdue by ' + Math.abs(diff) + 'd', cls: 'overdue' };
+      if (diff === 0) return { label: 'Due today', cls: 'today' };
+      if (diff <= 2)  return { label: 'Due in ' + diff + 'd', cls: 'soon' };
+      return { label: 'Due ' + due.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }), cls: 'upcoming' };
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       RENDER
+    ───────────────────────────────────────────────────────────────── */
+    function render() {
+      taskList.innerHTML = '';
+      const filtered = tasks.filter(t => {
+        if (currentFilter === 'active')       return !t.done;
+        if (currentFilter === 'done')         return t.done;
+        if (currentFilter === 'has-deadline') return !!t.deadline;
+        if (currentFilter === 'no-deadline')  return !t.deadline;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        taskList.innerHTML = '<p class="empty-msg">— no tasks —</p>';
+      } else {
+        filtered.forEach(task => {
+          const li       = document.createElement('li');
+          li.className   = 'task-item' + (task.done ? ' done' : '');
+
+          const checkbox   = document.createElement('input');
+          checkbox.type    = 'checkbox';
+          checkbox.checked = task.done;
+          checkbox.addEventListener('change', () => toggle(task.id));
+
+          const meta     = document.createElement('div');
+          meta.className = 'task-meta';
+
+          const span       = document.createElement('span');
+          span.className   = 'task-text';
+          span.textContent = task.text;
+          meta.appendChild(span);
+
+          if (task.deadline) {
+            const st = deadlineStatus(task.deadline);
+            if (st) {
+              const badge       = document.createElement('span');
+              badge.className   = 'deadline-badge ' + st.cls;
+              badge.textContent = st.label;
+              meta.appendChild(badge);
+            }
+          }
+
+          const actions     = document.createElement('div');
+          actions.className = 'task-actions';
+
+          const editBtn       = document.createElement('button');
+          editBtn.className   = 'edit-btn';
+          editBtn.textContent = '✎';
+          editBtn.title       = 'Edit';
+          editBtn.addEventListener('click', () => startEdit(task, li, meta, actions, checkbox));
+
+          const del       = document.createElement('button');
+          del.className   = 'delete-btn';
+          del.textContent = '✕';
+          del.title       = 'Delete';
+          del.addEventListener('click', () => showConfirm(task.id, actions));
+
+          actions.appendChild(editBtn);
+          actions.appendChild(del);
+
+          li.appendChild(checkbox);
+          li.appendChild(meta);
+          li.appendChild(actions);
+          taskList.appendChild(li);
+        });
+      }
+
+      const activeCount = tasks.filter(t => !t.done).length;
+      remaining.textContent = `${activeCount} task${activeCount !== 1 ? 's' : ''} left`;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       INLINE CONFIRM DELETE
+    ───────────────────────────────────────────────────────────────── */
+    function showConfirm(id, actions) {
+      actions.innerHTML = '';
+      const row       = document.createElement('div');
+      row.className   = 'confirm-row';
+
+      const label     = document.createElement('span');
+      label.textContent = 'Delete?';
+
+      const yes       = document.createElement('button');
+      yes.className   = 'confirm-yes-btn';
+      yes.textContent = 'Yes';
+      yes.addEventListener('click', () => remove(id));
+
+      const no        = document.createElement('button');
+      no.className    = 'confirm-no-btn';
+      no.textContent  = 'No';
+      no.addEventListener('click', () => render());
+
+      row.appendChild(label);
+      row.appendChild(yes);
+      row.appendChild(no);
+      actions.appendChild(row);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       INLINE EDIT
+    ───────────────────────────────────────────────────────────────── */
+    function startEdit(task, li, meta, actions, checkbox) {
+      checkbox.style.display = 'none';
+      actions.style.display  = 'none';
+      meta.innerHTML         = '';
+
+      const textInput     = document.createElement('input');
+      textInput.type      = 'text';
+      textInput.className = 'edit-input';
+      textInput.value     = task.text;
+      textInput.maxLength = 120;
+
+      const dateInput     = document.createElement('input');
+      dateInput.type      = 'date';
+      dateInput.className = 'edit-deadline';
+      dateInput.value     = task.deadline || '';
+      dateInput.min       = new Date().toISOString().split('T')[0];
+
+      const editActions     = document.createElement('div');
+      editActions.className = 'edit-actions';
+
+      const saveBtn         = document.createElement('button');
+      saveBtn.className     = 'edit-save-btn';
+      saveBtn.textContent   = 'Save';
+      saveBtn.addEventListener('click', async () => {
+        const newText = textInput.value.trim();
+        if (!newText) { textInput.focus(); return; }
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        await updateTask(task.id, newText, dateInput.value || null);
+      });
+
+      const cancelBtn       = document.createElement('button');
+      cancelBtn.className   = 'edit-cancel-btn';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', () => render());
+
+      textInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  saveBtn.click();
+        if (e.key === 'Escape') cancelBtn.click();
+      });
+
+      editActions.appendChild(saveBtn);
+      editActions.appendChild(cancelBtn);
+      meta.appendChild(textInput);
+      meta.appendChild(dateInput);
+      meta.appendChild(editActions);
+      textInput.focus();
+      textInput.select();
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       EVENT LISTENERS
+    ───────────────────────────────────────────────────────────────── */
+    addBtn.addEventListener('click', addTask);
+    taskInput.addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
+
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        render();
+      });
+    });
+
+    clearBtn.addEventListener('click', async () => {
+      const doneIds = tasks.filter(t => t.done).map(t => t.id);
+      if (!doneIds.length) return;
+      const { error } = await sb.from('tasks').delete().in('id', doneIds);
+      if (error) { showToast('Could not clear completed tasks.'); return; }
+      tasks = tasks.filter(t => !t.done);
+      render();
+    });
+
+    /* ── Export / Import ── */
+    exportBtn.addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'tasks-backup-' + new Date().toISOString().split('T')[0] + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      importFile.value = '';
+      let imported;
+      try { imported = JSON.parse(await file.text()); } catch { showToast('Invalid file.'); return; }
+      if (!Array.isArray(imported)) { showToast('Invalid backup format.'); return; }
+
+      // Only import fields Supabase cares about; let it generate id/user_id/created_at
+      const rows = imported
+        .filter(t => t.text)
+        .map(t => ({ text: t.text, done: !!t.done, deadline: t.deadline || null }));
+
+      if (!rows.length) { showToast('No valid tasks found.'); return; }
+
+      const { data, error } = await sb.from('tasks').insert(rows).select();
+      if (error) { showToast('Import failed: ' + error.message); return; }
+      tasks = [...tasks, ...data];
+      render();
+      showToast(`Imported ${data.length} task(s).`);
+    });
+  </script>
+</body>
+</html>
