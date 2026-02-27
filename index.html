@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Tasks</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <style>
     /* ── CSS Variables ── */
     :root {
@@ -709,15 +712,28 @@
 
   <script>
     /* ─────────────────────────────────────────────────────────────────
-       CONFIG — Replace with your Supabase project values
+       CONFIG — Replace with your Firebase project values
     ───────────────────────────────────────────────────────────────── */
-    const SUPABASE_URL      = 'https://bhhoyyztgmexwiahcsia.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoaG95eXp0Z21leHdpYWhjc2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMTU1NTEsImV4cCI6MjA4Nzc5MTU1MX0.RnCLslvlKN1YHU0ZAcNhVto637Xeiwu2upmxUtsaBMU';
+const firebaseConfig = {
+  apiKey: "AIzaSyA96SI5POCsdPrgS81T5NvJVE8vdoD3xTk",
+  authDomain: "to-do-app-d290a.firebaseapp.com",
+  projectId: "to-do-app-d290a",
+  storageBucket: "to-do-app-d290a.firebasestorage.app",
+  messagingSenderId: "42708345118",
+  appId: "1:42708345118:web:d541888aa3df076aa5e90f",
+  measurementId: "G-HL58950DCR"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
     
     /* ─────────────────────────────────────────────────────────────────
        INIT
     ───────────────────────────────────────────────────────────────── */
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
 
     let tasks         = [];
     let currentFilter = 'all';
@@ -818,15 +834,10 @@
 
       try {
         if (authMode === 'login') {
-          const { error } = await sb.auth.signInWithPassword({ email, password });
-          if (error) throw error;
+          await auth.signInWithEmailAndPassword(email, password);
         } else {
-          const { error } = await sb.auth.signUp({ email, password });
-          if (error) throw error;
-          showAuthSuccess('Account created! Check your email to confirm, then sign in.');
-          authSubmit.disabled = false;
-          authSubmit.textContent = 'Create Account';
-          return;
+          await auth.createUserWithEmailAndPassword(email, password);
+          showAuthSuccess('Account created! You are now signed in.');
         }
       } catch (e) {
         showAuthError(e.message);
@@ -839,25 +850,26 @@
     authPass.addEventListener('keydown',   e => { if (e.key === 'Enter') authSubmit.click(); });
 
     googleBtn.addEventListener('click', async () => {
-      const { error } = await sb.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.href }
-      });
-      if (error) showAuthError(error.message);
+      const provider = new firebase.auth.GoogleAuthProvider();
+      try {
+        await auth.signInWithPopup(provider);
+      } catch (e) {
+        showAuthError(e.message);
+      }
     });
 
     logoutBtn.addEventListener('click', async () => {
-      await sb.auth.signOut();
+      await auth.signOut();
     });
 
     /* ─────────────────────────────────────────────────────────────────
        AUTH STATE → SWITCH VIEWS
     ───────────────────────────────────────────────────────────────── */
-    sb.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
         authView.style.display = 'none';
         appView.style.display  = '';
-        userLabel.textContent  = session.user.email;
+        userLabel.textContent  = user.email;
         await loadTasks();
         render();
       } else {
@@ -868,15 +880,20 @@
     });
 
     /* ─────────────────────────────────────────────────────────────────
-       SUPABASE TASK CRUD
+       FIRESTORE TASK CRUD
     ───────────────────────────────────────────────────────────────── */
+    function getUserTasksRef() {
+      const user = auth.currentUser;
+      return db.collection('users').doc(user.uid).collection('tasks');
+    }
+
     async function loadTasks() {
-      const { data, error } = await sb
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (error) { showToast('Failed to load tasks.'); return; }
-      tasks = data;
+      try {
+        const snapshot = await getUserTasksRef().orderBy('created_at').get();
+        tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e) {
+        showToast('Failed to load tasks.');
+      }
     }
 
     async function addTask() {
@@ -885,37 +902,54 @@
       if (!text) return;
 
       addBtn.disabled = true;
-      const { data, error } = await sb.from('tasks').insert({ text, deadline }).select().single();
+      try {
+        const docRef = await getUserTasksRef().add({
+          text,
+          deadline,
+          done: false,
+          created_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        const newTask = { id: docRef.id, text, deadline, done: false, created_at: new Date() };
+        tasks.push(newTask);
+        taskInput.value     = '';
+        deadlineInput.value = '';
+        render();
+      } catch (e) {
+        showToast('Could not add task.');
+      }
       addBtn.disabled = false;
-
-      if (error) { showToast('Could not add task.'); return; }
-      tasks.push(data);
-      taskInput.value     = '';
-      deadlineInput.value = '';
-      render();
     }
 
     async function toggle(id) {
       const task    = tasks.find(t => t.id === id);
       const newDone = !task.done;
-      const { error } = await sb.from('tasks').update({ done: newDone }).eq('id', id);
-      if (error) { showToast('Could not update task.'); return; }
-      tasks = tasks.map(t => t.id === id ? { ...t, done: newDone } : t);
-      render();
+      try {
+        await getUserTasksRef().doc(id).update({ done: newDone });
+        tasks = tasks.map(t => t.id === id ? { ...t, done: newDone } : t);
+        render();
+      } catch (e) {
+        showToast('Could not update task.');
+      }
     }
 
     async function remove(id) {
-      const { error } = await sb.from('tasks').delete().eq('id', id);
-      if (error) { showToast('Could not delete task.'); return; }
-      tasks = tasks.filter(t => t.id !== id);
-      render();
+      try {
+        await getUserTasksRef().doc(id).delete();
+        tasks = tasks.filter(t => t.id !== id);
+        render();
+      } catch (e) {
+        showToast('Could not delete task.');
+      }
     }
 
     async function updateTask(id, newText, newDeadline) {
-      const { error } = await sb.from('tasks').update({ text: newText, deadline: newDeadline }).eq('id', id);
-      if (error) { showToast('Could not save changes.'); return; }
-      tasks = tasks.map(t => t.id === id ? { ...t, text: newText, deadline: newDeadline } : t);
-      render();
+      try {
+        await getUserTasksRef().doc(id).update({ text: newText, deadline: newDeadline });
+        tasks = tasks.map(t => t.id === id ? { ...t, text: newText, deadline: newDeadline } : t);
+        render();
+      } catch (e) {
+        showToast('Could not save changes.');
+      }
     }
 
     /* ─────────────────────────────────────────────────────────────────
@@ -1102,10 +1136,15 @@
     clearBtn.addEventListener('click', async () => {
       const doneIds = tasks.filter(t => t.done).map(t => t.id);
       if (!doneIds.length) return;
-      const { error } = await sb.from('tasks').delete().in('id', doneIds);
-      if (error) { showToast('Could not clear completed tasks.'); return; }
-      tasks = tasks.filter(t => !t.done);
-      render();
+      try {
+        const batch = db.batch();
+        doneIds.forEach(id => batch.delete(getUserTasksRef().doc(id)));
+        await batch.commit();
+        tasks = tasks.filter(t => !t.done);
+        render();
+      } catch (e) {
+        showToast('Could not clear completed tasks.');
+      }
     });
 
     /* ── Export / Import ── */
@@ -1128,18 +1167,27 @@
       try { imported = JSON.parse(await file.text()); } catch { showToast('Invalid file.'); return; }
       if (!Array.isArray(imported)) { showToast('Invalid backup format.'); return; }
 
-      // Only import fields Supabase cares about; let it generate id/user_id/created_at
       const rows = imported
         .filter(t => t.text)
         .map(t => ({ text: t.text, done: !!t.done, deadline: t.deadline || null }));
 
       if (!rows.length) { showToast('No valid tasks found.'); return; }
 
-      const { data, error } = await sb.from('tasks').insert(rows).select();
-      if (error) { showToast('Import failed: ' + error.message); return; }
-      tasks = [...tasks, ...data];
-      render();
-      showToast(`Imported ${data.length} task(s).`);
+      try {
+        const batch = db.batch();
+        const newTasks = [];
+        rows.forEach(row => {
+          const docRef = getUserTasksRef().doc();
+          batch.set(docRef, { ...row, created_at: firebase.firestore.FieldValue.serverTimestamp() });
+          newTasks.push({ id: docRef.id, ...row, created_at: new Date() });
+        });
+        await batch.commit();
+        tasks = [...tasks, ...newTasks];
+        render();
+        showToast(`Imported ${newTasks.length} task(s).`);
+      } catch (e) {
+        showToast('Import failed: ' + e.message);
+      }
     });
   </script>
 </body>
