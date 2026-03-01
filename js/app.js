@@ -877,6 +877,7 @@ infoModal.addEventListener('click', (e) => {
 // Voice Input
 // ─────────────────────────────────────────
 const micBtn = document.getElementById('mic-btn');
+const voicePreview = document.getElementById('voice-preview');
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (!SpeechRecognition) {
@@ -889,49 +890,81 @@ if (!SpeechRecognition) {
 } else {
   const recognition = new SpeechRecognition();
   recognition.lang = 'en-US';
+  recognition.continuous = true;       // keep listening until user stops
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
 
   let isListening = false;
+  let finalTranscript = '';
 
-  recognition.onstart = () => {
+  function startListening() {
+    finalTranscript = taskInput.value.trim();
     isListening = true;
     micBtn.classList.add('listening');
-    taskInput.placeholder = 'Listening…';
-  };
+    taskInput.placeholder = 'Listening… click mic to stop';
+    voicePreview.textContent = '';
+    voicePreview.style.display = 'block';
+    recognition.start();
+  }
 
-  recognition.onresult = (e) => {
-    const transcript = Array.from(e.results)
-      .map(r => r[0].transcript)
-      .join('');
-    taskInput.value = transcript;
-
-    // Auto-add if final result
-    if (e.results[e.results.length - 1].isFinal) {
-      taskInput.focus();
-    }
-  };
-
-  recognition.onerror = (e) => {
-    const msgs = {
-      'not-allowed': 'Microphone access denied',
-      'no-speech':   'No speech detected',
-      'network':     'Network error'
-    };
-    showToast(msgs[e.error] || 'Voice input error');
-  };
-
-  recognition.onend = () => {
+  function stopListening() {
+    recognition.stop();
     isListening = false;
     micBtn.classList.remove('listening');
     taskInput.placeholder = 'Add a new task…';
+    voicePreview.style.display = 'none';
+    voicePreview.textContent = '';
+    if (finalTranscript) {
+      taskInput.value = finalTranscript;
+      taskInput.focus();
+    }
+  }
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    finalTranscript = taskInput.value.trim();
+
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) {
+        finalTranscript += (finalTranscript ? ' ' : '') + t.trim();
+      } else {
+        interim += t;
+      }
+    }
+
+    // Show confirmed text in input, live preview of unconfirmed below
+    taskInput.value = finalTranscript;
+    voicePreview.textContent = interim ? `Hearing: "${interim}"` : '';
+  };
+
+  recognition.onerror = (e) => {
+    // no-speech just means silence — stop quietly without alarming the user
+    if (e.error === 'no-speech') {
+      stopListening();
+      return;
+    }
+    const msgs = {
+      'not-allowed':   'Microphone access denied. Please allow mic permission and try again.',
+      'audio-capture': 'No microphone found. Please connect a mic and try again.',
+      'network':       'Network error during voice recognition.',
+    };
+    stopListening();
+    showInfoModal('🎤 Voice Error', msgs[e.error] || `Voice error: ${e.error}`);
+  };
+
+  recognition.onend = () => {
+    // onend fires after stop() — clean up if still marked as listening
+    if (isListening) {
+      stopListening();
+    }
   };
 
   micBtn.addEventListener('click', () => {
     if (isListening) {
-      recognition.stop();
+      stopListening();
     } else {
-      recognition.start();
+      startListening();
     }
   });
 }

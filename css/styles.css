@@ -472,6 +472,23 @@ h1 {
   50%       { box-shadow: 0 0 0 6px rgba(255, 79, 79, 0); }
 }
 
+.voice-preview {
+  display: none;
+  font-size: 0.75rem;
+  color: var(--accent2);
+  font-style: italic;
+  padding: 4px 2px;
+  min-height: 1.2em;
+  letter-spacing: 0.01em;
+  opacity: 0.85;
+  animation: voice-fade 0.3s ease;
+}
+
+@keyframes voice-fade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 0.85; transform: translateY(0); }
+}
+
 /* ─────────────────────────────────────────
    Keyboard Hint
 ───────────────────────────────────────── */
