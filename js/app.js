@@ -874,100 +874,202 @@ infoModal.addEventListener('click', (e) => {
 });
 
 // ─────────────────────────────────────────
-// Voice Input
+// Voice Input — Whisper API (MediaRecorder)
 // ─────────────────────────────────────────
-const micBtn = document.getElementById('mic-btn');
-const voicePreview = document.getElementById('voice-preview');
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn        = document.getElementById('mic-btn');
+const voiceStatus   = document.getElementById('voice-status');
+const voiceStatusTx = document.getElementById('voice-status-text');
+const voiceTimer    = document.getElementById('voice-timer');
+const apiKeyModal   = document.getElementById('api-key-modal');
+const apiKeyInput   = document.getElementById('api-key-input');
+const apiKeyCancel  = document.getElementById('api-key-cancel');
+const apiKeySave    = document.getElementById('api-key-save');
 
-if (!SpeechRecognition) {
-  micBtn.addEventListener('click', () => {
-    showInfoModal(
-      '🎤 Not Supported',
-      'Voice input is not supported in your current browser. Please use Google Chrome or Microsoft Edge to use this feature.'
-    );
-  });
-} else {
-  const recognition = new SpeechRecognition();
-  recognition.lang = 'en-US';
-  recognition.continuous = true;       // keep listening until user stops
-  recognition.interimResults = true;
-  recognition.maxAlternatives = 1;
+let mediaRecorder   = null;
+let audioChunks     = [];
+let isRecording     = false;
+let timerInterval   = null;
+let recordSeconds   = 0;
 
-  let isListening = false;
-  let finalTranscript = '';
+// ── API Key Modal ──────────────────────────
+function getApiKey() {
+  return localStorage.getItem('openai_api_key') || '';
+}
 
-  function startListening() {
-    finalTranscript = taskInput.value.trim();
-    isListening = true;
-    micBtn.classList.add('listening');
-    taskInput.placeholder = 'Listening… click mic to stop';
-    voicePreview.textContent = '';
-    voicePreview.style.display = 'block';
-    recognition.start();
-  }
-
-  function stopListening() {
-    recognition.stop();
-    isListening = false;
-    micBtn.classList.remove('listening');
-    taskInput.placeholder = 'Add a new task…';
-    voicePreview.style.display = 'none';
-    voicePreview.textContent = '';
-    if (finalTranscript) {
-      taskInput.value = finalTranscript;
-      taskInput.focus();
-    }
-  }
-
-  recognition.onresult = (e) => {
-    let interim = '';
-    finalTranscript = taskInput.value.trim();
-
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) {
-        finalTranscript += (finalTranscript ? ' ' : '') + t.trim();
-      } else {
-        interim += t;
-      }
-    }
-
-    // Show confirmed text in input, live preview of unconfirmed below
-    taskInput.value = finalTranscript;
-    voicePreview.textContent = interim ? `Hearing: "${interim}"` : '';
-  };
-
-  recognition.onerror = (e) => {
-    // no-speech just means silence — stop quietly without alarming the user
-    if (e.error === 'no-speech') {
-      stopListening();
+function openApiKeyModal(thenStart = false) {
+  apiKeyInput.value = getApiKey();
+  apiKeyModal.classList.add('show');
+  apiKeyInput.focus();
+  apiKeySave.onclick = () => {
+    const key = apiKeyInput.value.trim();
+    if (!key.startsWith('sk-')) {
+      apiKeyInput.style.borderColor = 'var(--red)';
+      apiKeyInput.placeholder = 'Must start with sk-…';
       return;
     }
-    const msgs = {
-      'not-allowed':   'Microphone access denied. Please allow mic permission and try again.',
-      'audio-capture': 'No microphone found. Please connect a mic and try again.',
-      'network':       'Network error during voice recognition.',
-    };
-    stopListening();
-    showInfoModal('🎤 Voice Error', msgs[e.error] || `Voice error: ${e.error}`);
+    apiKeyInput.style.borderColor = '';
+    localStorage.setItem('openai_api_key', key);
+    apiKeyModal.classList.remove('show');
+    if (thenStart) startRecording();
   };
-
-  recognition.onend = () => {
-    // onend fires after stop() — clean up if still marked as listening
-    if (isListening) {
-      stopListening();
-    }
-  };
-
-  micBtn.addEventListener('click', () => {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening();
-    }
-  });
 }
+
+apiKeyCancel.addEventListener('click', () => apiKeyModal.classList.remove('show'));
+apiKeyModal.addEventListener('click', (e) => {
+  if (e.target === apiKeyModal) apiKeyModal.classList.remove('show');
+});
+
+// ── Timer ──────────────────────────────────
+function startTimer() {
+  recordSeconds = 0;
+  voiceTimer.textContent = '0:00';
+  timerInterval = setInterval(() => {
+    recordSeconds++;
+    const m = Math.floor(recordSeconds / 60);
+    const s = String(recordSeconds % 60).padStart(2, '0');
+    voiceTimer.textContent = `${m}:${s}`;
+    // Max 60 s to keep Whisper cost low
+    if (recordSeconds >= 60) stopRecording();
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+// ── Recording ─────────────────────────────
+async function startRecording() {
+  if (!navigator.mediaDevices) {
+    showInfoModal('🎤 Not Available', 'Microphone access requires a secure (HTTPS) connection.');
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    const msgs = {
+      NotAllowedError:  'Microphone permission denied. Please allow mic access in your browser and try again.',
+      NotFoundError:    'No microphone found. Please connect a microphone and try again.',
+    };
+    showInfoModal('🎤 Mic Error', msgs[err.name] || `Could not access microphone: ${err.message}`);
+    return;
+  }
+
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.addEventListener('dataavailable', e => {
+    if (e.data.size > 0) audioChunks.push(e.data);
+  });
+  mediaRecorder.addEventListener('stop', () => {
+    stream.getTracks().forEach(t => t.stop());
+    transcribeAudio();
+  });
+
+  mediaRecorder.start();
+  isRecording = true;
+  micBtn.classList.add('recording');
+  voiceStatus.style.display  = 'flex';
+  voiceStatus.classList.remove('transcribing');
+  voiceStatusTx.textContent  = 'Recording… click mic to stop';
+  voiceTimer.style.display   = 'inline';
+  startTimer();
+}
+
+function stopRecording() {
+  if (!isRecording || !mediaRecorder) return;
+  mediaRecorder.stop();
+  isRecording = false;
+  micBtn.classList.remove('recording');
+  micBtn.classList.add('transcribing');
+  micBtn.disabled = true;
+  stopTimer();
+  voiceStatus.classList.add('transcribing');
+  voiceStatusTx.textContent = 'Transcribing…';
+  voiceTimer.style.display  = 'none';
+}
+
+// ── Whisper API Call ──────────────────────
+async function transcribeAudio() {
+  const key = getApiKey();
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+
+  const form = new FormData();
+  form.append('file', blob, 'recording.webm');
+  form.append('model', 'whisper-1');
+  form.append('language', 'en');
+
+  let result;
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+    });
+
+    if (res.status === 401) {
+      voiceReset();
+      showInfoModal('🔑 Invalid API Key', 'Your OpenAI API key is invalid or expired. Click the key icon on the mic button to update it.');
+      localStorage.removeItem('openai_api_key');
+      return;
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+
+    result = await res.json();
+  } catch (err) {
+    voiceReset();
+    showInfoModal('🎤 Transcription Failed', `Could not transcribe audio: ${err.message}`);
+    return;
+  }
+
+  voiceReset();
+  const text = (result.text || '').trim();
+  if (text) {
+    taskInput.value = text;
+    taskInput.focus();
+    showToast('Voice input ready — press Enter to add');
+  } else {
+    showToast('No speech detected in recording');
+  }
+}
+
+function voiceReset() {
+  micBtn.classList.remove('recording', 'transcribing');
+  micBtn.disabled      = false;
+  voiceStatus.style.display = 'none';
+  voiceStatus.classList.remove('transcribing');
+  voiceStatusTx.textContent = '';
+  voiceTimer.textContent    = '0:00';
+  audioChunks = [];
+  mediaRecorder = null;
+}
+
+// ── Mic Button Click ──────────────────────
+micBtn.addEventListener('click', () => {
+  if (isRecording) {
+    stopRecording();
+    return;
+  }
+  const key = getApiKey();
+  if (!key) {
+    openApiKeyModal(true);
+  } else {
+    startRecording();
+  }
+});
+
+// Long-press mic = open key settings
+let micHoldTimer = null;
+micBtn.addEventListener('mousedown', () => {
+  micHoldTimer = setTimeout(() => openApiKeyModal(false), 800);
+});
+micBtn.addEventListener('mouseup', () => clearTimeout(micHoldTimer));
+micBtn.addEventListener('mouseleave', () => clearTimeout(micHoldTimer));
 
 // ─────────────────────────────────────────
 // Global Keyboard Shortcuts
@@ -1007,11 +1109,6 @@ document.addEventListener('keydown', e => {
     taskInput.focus();
   }
   
-  // Ctrl+M - toggle voice input
-  if (e.ctrlKey && e.key === 'm' && !isInput) {
-    e.preventDefault();
-    micBtn.click();
-  }
 });
 
 // ═══════════════════════════════════════════════════════════════════

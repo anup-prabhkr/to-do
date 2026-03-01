@@ -441,54 +441,6 @@ h1 {
   cursor: not-allowed; 
 }
 
-#mic-btn {
-  padding: 0 12px;
-  height: 42px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-#mic-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent2);
-}
-
-#mic-btn.listening {
-  border-color: var(--red);
-  color: var(--red);
-  animation: mic-pulse 1s ease-in-out infinite;
-}
-
-@keyframes mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 79, 79, 0.4); }
-  50%       { box-shadow: 0 0 0 6px rgba(255, 79, 79, 0); }
-}
-
-.voice-preview {
-  display: none;
-  font-size: 0.75rem;
-  color: var(--accent2);
-  font-style: italic;
-  padding: 4px 2px;
-  min-height: 1.2em;
-  letter-spacing: 0.01em;
-  opacity: 0.85;
-  animation: voice-fade 0.3s ease;
-}
-
-@keyframes voice-fade {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 0.85; transform: translateY(0); }
-}
-
 /* ─────────────────────────────────────────
    Keyboard Hint
 ───────────────────────────────────────── */
