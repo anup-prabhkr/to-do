@@ -9,6 +9,9 @@
 let tasks = [];
 let currentFilter = 'all';
 let authMode = 'login';
+let selectedTasks = new Set();
+let notificationsEnabled = false;
+let reminderInterval = null;
 
 // ─────────────────────────────────────────
 // DOM Elements - Auth
@@ -23,6 +26,14 @@ const authSubmit = document.getElementById('auth-submit');
 const googleBtn = document.getElementById('google-btn');
 const authError = document.getElementById('auth-error');
 const authSuccess = document.getElementById('auth-success');
+const authThemeBtn = document.getElementById('auth-theme-btn');
+
+// ─────────────────────────────────────────
+// DOM Elements - Logout Modal
+// ─────────────────────────────────────────
+const logoutModal = document.getElementById('logout-modal');
+const logoutCancel = document.getElementById('logout-cancel');
+const logoutConfirm = document.getElementById('logout-confirm');
 
 // ─────────────────────────────────────────
 // DOM Elements - App
@@ -42,8 +53,23 @@ const logoutBtn = document.getElementById('logout-btn');
 const userLabel = document.getElementById('user-email-label');
 const toastEl = document.getElementById('toast');
 
-// Set minimum date for deadline input
-deadlineInput.min = new Date().toISOString().split('T')[0];
+// ─────────────────────────────────────────
+// DOM Elements - Bulk Actions
+// ─────────────────────────────────────────
+const bulkBar = document.getElementById('bulk-bar');
+const selectAllCb = document.getElementById('select-all-cb');
+const selectedCount = document.getElementById('selected-count');
+const bulkCompleteBtn = document.getElementById('bulk-complete-btn');
+const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+const notifyBtn = document.getElementById('notify-btn');
+
+// Set minimum datetime for deadline input (current time)
+function updateDeadlineMin() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  deadlineInput.min = now.toISOString().slice(0, 16);
+}
+updateDeadlineMin();
 
 // ═══════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
@@ -66,16 +92,243 @@ function showToast(msg, duration = 2500) {
 // ─────────────────────────────────────────
 function applyTheme(light) {
   document.body.classList.toggle('light', light);
-  themeBtn.textContent = light ? '☾ Dark' : '☀ Light';
+  const label = light ? '☾ Dark' : '☀ Light';
+  themeBtn.textContent = label;
+  authThemeBtn.textContent = label;
   localStorage.setItem('theme', light ? 'light' : 'dark');
 }
 
 // Initialize theme
 applyTheme(localStorage.getItem('theme') === 'light');
 
-// Theme toggle event
+// Theme toggle events (both auth and app)
 themeBtn.addEventListener('click', () => {
   applyTheme(!document.body.classList.contains('light'));
+});
+
+authThemeBtn.addEventListener('click', () => {
+  applyTheme(!document.body.classList.contains('light'));
+});
+
+// ─────────────────────────────────────────
+// Logout Modal
+// ─────────────────────────────────────────
+function showLogoutModal() {
+  logoutModal.classList.add('show');
+}
+
+function hideLogoutModal() {
+  logoutModal.classList.remove('show');
+}
+
+logoutCancel.addEventListener('click', hideLogoutModal);
+
+logoutConfirm.addEventListener('click', async () => {
+  hideLogoutModal();
+  await auth.signOut();
+  showToast('Signed out');
+});
+
+// Close modal on overlay click
+logoutModal.addEventListener('click', (e) => {
+  if (e.target === logoutModal) {
+    hideLogoutModal();
+  }
+});
+
+// ─────────────────────────────────────────
+// Due Date Reminders (Notifications)
+// ─────────────────────────────────────────
+const notifiedTasks = new Set(); // Track which tasks have been notified
+
+function checkDeadlineReminders() {
+  if (!notificationsEnabled || Notification.permission !== 'granted') return;
+  
+  const now = new Date();
+  
+  tasks.forEach(task => {
+    if (task.done || !task.deadline || notifiedTasks.has(task.id)) return;
+    
+    // Parse deadline (supports both date and datetime)
+    let dueDate;
+    if (task.deadline.includes('T')) {
+      dueDate = new Date(task.deadline);
+    } else {
+      dueDate = new Date(task.deadline + 'T23:59:59');
+    }
+    
+    const diff = dueDate - now;
+    const hoursLeft = diff / (1000 * 60 * 60);
+    
+    // Notify if within 1 hour or overdue
+    if (hoursLeft <= 1 && hoursLeft > -24) {
+      notifiedTasks.add(task.id);
+      
+      let message;
+      if (hoursLeft <= 0) {
+        message = `"${task.text}" is overdue!`;
+      } else if (hoursLeft <= 1) {
+        message = `"${task.text}" is due in less than an hour!`;
+      }
+      
+      new Notification('Task Reminder', {
+        body: message,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✓</text></svg>',
+        tag: task.id
+      });
+    }
+  });
+}
+
+async function enableNotifications() {
+  if (!('Notification' in window)) {
+    showToast('Notifications not supported');
+    return;
+  }
+  
+  if (Notification.permission === 'granted') {
+    notificationsEnabled = !notificationsEnabled;
+    updateNotifyBtn();
+    if (notificationsEnabled) {
+      startReminderCheck();
+      showToast('Reminders enabled');
+    } else {
+      stopReminderCheck();
+      showToast('Reminders disabled');
+    }
+  } else if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      notificationsEnabled = true;
+      updateNotifyBtn();
+      startReminderCheck();
+      showToast('Reminders enabled');
+    } else {
+      showToast('Notification permission denied');
+    }
+  } else {
+    showToast('Notifications blocked by browser');
+  }
+}
+
+function updateNotifyBtn() {
+  notifyBtn.classList.toggle('enabled', notificationsEnabled);
+  notifyBtn.textContent = notificationsEnabled ? '🔔 On' : '🔔 Reminders';
+}
+
+function startReminderCheck() {
+  checkDeadlineReminders();
+  reminderInterval = setInterval(checkDeadlineReminders, 60000); // Check every minute
+}
+
+function stopReminderCheck() {
+  if (reminderInterval) {
+    clearInterval(reminderInterval);
+    reminderInterval = null;
+  }
+}
+
+notifyBtn.addEventListener('click', enableNotifications);
+
+// ─────────────────────────────────────────
+// Bulk Actions
+// ─────────────────────────────────────────
+function updateBulkBar() {
+  const hasSelection = selectedTasks.size > 0;
+  bulkBar.style.display = hasSelection ? 'flex' : 'none';
+  selectedCount.textContent = `${selectedTasks.size} selected`;
+  
+  // Update select all checkbox
+  const visibleTasks = getFilteredTasks();
+  selectAllCb.checked = visibleTasks.length > 0 && 
+    visibleTasks.every(t => selectedTasks.has(t.id));
+  selectAllCb.indeterminate = selectedTasks.size > 0 && 
+    !visibleTasks.every(t => selectedTasks.has(t.id));
+}
+
+function getFilteredTasks() {
+  return tasks.filter(t => {
+    if (currentFilter === 'active') return !t.done;
+    if (currentFilter === 'done') return t.done;
+    if (currentFilter === 'has-deadline') return !!t.deadline;
+    if (currentFilter === 'no-deadline') return !t.deadline;
+    return true;
+  });
+}
+
+function toggleTaskSelection(id) {
+  if (selectedTasks.has(id)) {
+    selectedTasks.delete(id);
+  } else {
+    selectedTasks.add(id);
+  }
+  updateBulkBar();
+  render();
+}
+
+selectAllCb.addEventListener('change', () => {
+  const visibleTasks = getFilteredTasks();
+  if (selectAllCb.checked) {
+    visibleTasks.forEach(t => selectedTasks.add(t.id));
+  } else {
+    visibleTasks.forEach(t => selectedTasks.delete(t.id));
+  }
+  updateBulkBar();
+  render();
+});
+
+bulkCompleteBtn.addEventListener('click', async () => {
+  if (selectedTasks.size === 0) return;
+  
+  const ids = [...selectedTasks];
+  bulkCompleteBtn.disabled = true;
+  bulkCompleteBtn.textContent = 'Updating…';
+  
+  try {
+    const batch = db.batch();
+    ids.forEach(id => {
+      batch.update(getUserTasksRef().doc(id), { done: true });
+    });
+    await batch.commit();
+    
+    tasks = tasks.map(t => ids.includes(t.id) ? { ...t, done: true } : t);
+    selectedTasks.clear();
+    updateBulkBar();
+    render();
+    showToast(`Completed ${ids.length} task(s)`);
+  } catch (e) {
+    showToast('Could not complete tasks');
+  }
+  
+  bulkCompleteBtn.disabled = false;
+  bulkCompleteBtn.textContent = '✓ Complete';
+});
+
+bulkDeleteBtn.addEventListener('click', async () => {
+  if (selectedTasks.size === 0) return;
+  
+  const ids = [...selectedTasks];
+  bulkDeleteBtn.disabled = true;
+  bulkDeleteBtn.textContent = 'Deleting…';
+  
+  try {
+    const batch = db.batch();
+    ids.forEach(id => {
+      batch.delete(getUserTasksRef().doc(id));
+    });
+    await batch.commit();
+    
+    tasks = tasks.filter(t => !ids.includes(t.id));
+    selectedTasks.clear();
+    updateBulkBar();
+    render();
+    showToast(`Deleted ${ids.length} task(s)`);
+  } catch (e) {
+    showToast('Could not delete tasks');
+  }
+  
+  bulkDeleteBtn.disabled = false;
+  bulkDeleteBtn.textContent = '✕ Delete';
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -171,8 +424,8 @@ googleBtn.addEventListener('click', async () => {
 // ─────────────────────────────────────────
 // Sign Out
 // ─────────────────────────────────────────
-logoutBtn.addEventListener('click', async () => {
-  await auth.signOut();
+logoutBtn.addEventListener('click', () => {
+  showLogoutModal();
 });
 
 // ─────────────────────────────────────────
@@ -337,28 +590,52 @@ async function clearCompleted() {
 function deadlineStatus(deadline) {
   if (!deadline) return null;
   
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  let due;
+  let hasTime = false;
   
-  const due = new Date(deadline + 'T00:00:00');
-  const diff = Math.round((due - today) / 86400000);
+  // Check if deadline includes time
+  if (deadline.includes('T')) {
+    due = new Date(deadline);
+    hasTime = true;
+  } else {
+    due = new Date(deadline + 'T23:59:59');
+  }
   
-  if (diff < 0) {
-    return { label: 'Overdue by ' + Math.abs(diff) + 'd', cls: 'overdue' };
+  const diffMs = due - now;
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  // Format time if present
+  const timeStr = hasTime ? ' at ' + due.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+  
+  if (diffMs < 0) {
+    const overdueDays = Math.abs(diffDays);
+    if (overdueDays === 0) {
+      return { label: 'Overdue' + timeStr, cls: 'overdue' };
+    }
+    return { label: 'Overdue by ' + overdueDays + 'd', cls: 'overdue' };
   }
-  if (diff === 0) {
-    return { label: 'Due today', cls: 'today' };
+  
+  if (diffHours <= 1) {
+    return { label: 'Due in < 1hr', cls: 'today' };
   }
-  if (diff <= 2) {
-    return { label: 'Due in ' + diff + 'd', cls: 'soon' };
+  
+  if (diffHours <= 24) {
+    const hrs = Math.ceil(diffHours);
+    return { label: 'Due in ' + hrs + 'hr' + (hrs > 1 ? 's' : '') + timeStr, cls: 'today' };
+  }
+  
+  if (diffDays <= 2) {
+    return { label: 'Due in ' + diffDays + 'd' + timeStr, cls: 'soon' };
   }
   
   return { 
     label: 'Due ' + due.toLocaleDateString(undefined, { 
       month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    }), 
+      day: 'numeric',
+      year: due.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    }) + timeStr, 
     cls: 'upcoming' 
   };
 }
@@ -382,9 +659,18 @@ function render() {
   } else {
     filtered.forEach(task => {
       const li = document.createElement('li');
-      li.className = 'task-item' + (task.done ? ' done' : '');
+      li.className = 'task-item' + (task.done ? ' done' : '') + (selectedTasks.has(task.id) ? ' selected' : '');
+      li.dataset.taskId = task.id;
 
-      // Checkbox
+      // Selection checkbox
+      const selectCb = document.createElement('input');
+      selectCb.type = 'checkbox';
+      selectCb.className = 'select-cb';
+      selectCb.checked = selectedTasks.has(task.id);
+      selectCb.title = 'Select for bulk action';
+      selectCb.addEventListener('change', () => toggleTaskSelection(task.id));
+
+      // Done checkbox
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.done;
@@ -431,6 +717,7 @@ function render() {
 
       actions.appendChild(editBtn);
       actions.appendChild(del);
+      actions.appendChild(selectCb);
 
       li.appendChild(checkbox);
       li.appendChild(meta);
@@ -442,6 +729,9 @@ function render() {
   // Update remaining count
   const activeCount = tasks.filter(t => !t.done).length;
   remaining.textContent = `${activeCount} task${activeCount !== 1 ? 's' : ''} left`;
+  
+  // Update bulk bar state
+  updateBulkBar();
 }
 
 // ─────────────────────────────────────────
@@ -478,6 +768,9 @@ function showConfirm(id, actions) {
 function startEdit(task, li, meta, actions, checkbox) {
   checkbox.style.display = 'none';
   actions.style.display = 'none';
+  // Hide selection checkbox during edit
+  const selectCb = li.querySelector('.select-cb');
+  if (selectCb) selectCb.style.display = 'none';
   meta.innerHTML = '';
 
   // Text input
@@ -486,13 +779,17 @@ function startEdit(task, li, meta, actions, checkbox) {
   textInput.className = 'edit-input';
   textInput.value = task.text;
   textInput.maxLength = 120;
+  textInput.autocomplete = 'off';
 
-  // Date input
+  // Datetime input
   const dateInput = document.createElement('input');
-  dateInput.type = 'date';
+  dateInput.type = 'datetime-local';
   dateInput.className = 'edit-deadline';
   dateInput.value = task.deadline || '';
-  dateInput.min = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  dateInput.min = now.toISOString().slice(0, 16);
+  dateInput.autocomplete = 'off';
 
   // Edit actions
   const editActions = document.createElement('div');
@@ -556,6 +853,133 @@ filterBtns.forEach(btn => {
 
 // Clear completed
 clearBtn.addEventListener('click', clearCompleted);
+
+// ─────────────────────────────────────────
+// Info Modal
+// ─────────────────────────────────────────
+const infoModal = document.getElementById('info-modal');
+const infoModalTitle = document.getElementById('info-modal-title');
+const infoModalMessage = document.getElementById('info-modal-message');
+const infoModalClose = document.getElementById('info-modal-close');
+
+function showInfoModal(title, message) {
+  infoModalTitle.textContent = title;
+  infoModalMessage.textContent = message;
+  infoModal.classList.add('show');
+}
+
+infoModalClose.addEventListener('click', () => infoModal.classList.remove('show'));
+infoModal.addEventListener('click', (e) => {
+  if (e.target === infoModal) infoModal.classList.remove('show');
+});
+
+// ─────────────────────────────────────────
+// Voice Input
+// ─────────────────────────────────────────
+const micBtn = document.getElementById('mic-btn');
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (!SpeechRecognition) {
+  micBtn.addEventListener('click', () => {
+    showInfoModal(
+      '🎤 Not Supported',
+      'Voice input is not supported in your current browser. Please use Google Chrome or Microsoft Edge to use this feature.'
+    );
+  });
+} else {
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  let isListening = false;
+
+  recognition.onstart = () => {
+    isListening = true;
+    micBtn.classList.add('listening');
+    taskInput.placeholder = 'Listening…';
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results)
+      .map(r => r[0].transcript)
+      .join('');
+    taskInput.value = transcript;
+
+    // Auto-add if final result
+    if (e.results[e.results.length - 1].isFinal) {
+      taskInput.focus();
+    }
+  };
+
+  recognition.onerror = (e) => {
+    const msgs = {
+      'not-allowed': 'Microphone access denied',
+      'no-speech':   'No speech detected',
+      'network':     'Network error'
+    };
+    showToast(msgs[e.error] || 'Voice input error');
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    micBtn.classList.remove('listening');
+    taskInput.placeholder = 'Add a new task…';
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (isListening) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  });
+}
+
+// ─────────────────────────────────────────
+// Global Keyboard Shortcuts
+// ─────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // Don't trigger shortcuts when typing in inputs
+  const isInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  
+  // Delete key - remove selected tasks
+  if (e.key === 'Delete' && !isInput) {
+    if (selectedTasks.size > 0) {
+      bulkDeleteBtn.click();
+    }
+  }
+  
+  // Escape - clear selection
+  if (e.key === 'Escape' && !isInput) {
+    if (selectedTasks.size > 0) {
+      selectedTasks.clear();
+      updateBulkBar();
+      render();
+    }
+  }
+  
+  // Ctrl+A / Cmd+A - select all visible tasks
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !isInput) {
+    e.preventDefault();
+    const visibleTasks = getFilteredTasks();
+    visibleTasks.forEach(t => selectedTasks.add(t.id));
+    updateBulkBar();
+    render();
+  }
+  
+  // / or Ctrl+K - focus task input
+  if ((e.key === '/' || (e.ctrlKey && e.key === 'k')) && !isInput) {
+    e.preventDefault();
+    taskInput.focus();
+  }
+  
+  // Ctrl+M - toggle voice input
+  if (e.ctrlKey && e.key === 'm' && !isInput) {
+    e.preventDefault();
+    micBtn.click();
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════
 // IMPORT / EXPORT

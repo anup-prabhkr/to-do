@@ -38,7 +38,10 @@
        AUTH VIEW
   ════════════════════════════════════════════════════════════════ -->
   <div id="auth-view" class="auth-wrap" style="display:none">
-    <p class="auth-logo">Tasks</p>
+    <div class="auth-header">
+      <p class="auth-logo">Tasks</p>
+      <button id="auth-theme-btn" class="theme-toggle-btn">☀ Light</button>
+    </div>
     
     <div class="auth-card">
       <!-- Tabs -->
@@ -113,14 +116,35 @@
             placeholder="Add a new task…" 
             maxlength="120" 
           />
+          <button id="mic-btn" title="Add task by voice" aria-label="Voice input">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/>
+            </svg>
+          </button>
         </div>
         <div class="input-row">
           <input 
-            type="date" 
+            type="datetime-local" 
             id="deadline-input" 
-            title="Deadline (optional)" 
+            title="Deadline with time (optional)" 
           />
           <button id="add-btn">+ Add</button>
+        </div>
+        <p class="keyboard-hint">
+          <kbd>Enter</kbd> add • <kbd>Del</kbd> delete selected • <kbd>Esc</kbd> clear selection • <kbd>Ctrl+A</kbd> select all • <kbd>/</kbd> focus input • <kbd>Ctrl+M</kbd> voice
+        </p>
+      </div>
+
+      <!-- Bulk Actions Bar -->
+      <div id="bulk-bar" class="bulk-bar" style="display:none">
+        <label class="bulk-select-all">
+          <input type="checkbox" id="select-all-cb" />
+          <span>Select All</span>
+        </label>
+        <span id="selected-count">0 selected</span>
+        <div class="bulk-actions">
+          <button id="bulk-complete-btn" class="bulk-btn">✓ Complete</button>
+          <button id="bulk-delete-btn" class="bulk-btn bulk-btn-danger">✕ Delete</button>
         </div>
       </div>
 
@@ -139,6 +163,7 @@
       <!-- Footer -->
       <div class="footer">
         <span id="remaining">0 tasks left</span>
+        <button id="notify-btn" title="Enable deadline reminders">🔔 Reminders</button>
         <button id="clear-btn">Clear completed</button>
       </div>
 
@@ -154,6 +179,29 @@
 
   <!-- Toast Notification -->
   <div id="toast"></div>
+
+  <!-- Sign Out Confirmation Modal -->
+  <div id="logout-modal" class="modal-overlay">
+    <div class="modal-card">
+      <p class="modal-title">Sign Out</p>
+      <p class="modal-message">Are you sure you want to sign out?</p>
+      <div class="modal-actions">
+        <button id="logout-cancel" class="modal-btn modal-btn-cancel">Cancel</button>
+        <button id="logout-confirm" class="modal-btn modal-btn-confirm">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info / Feature Not Supported Modal -->
+  <div id="info-modal" class="modal-overlay">
+    <div class="modal-card">
+      <p class="modal-title" id="info-modal-title">Not Supported</p>
+      <p class="modal-message" id="info-modal-message"></p>
+      <div class="modal-actions">
+        <button id="info-modal-close" class="modal-btn modal-btn-confirm">Got it</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ════════════════════════════════════════════════════════════════
        SCRIPTS
