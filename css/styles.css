@@ -297,6 +297,30 @@ body {
   display: block; 
 }
 
+.auth-resend-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.auth-resend-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.auth-resend-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ─────────────────────────────────────────
    App View - Container
 ───────────────────────────────────────── */

@@ -12,6 +12,7 @@ let authMode = 'login';
 let selectedTasks = new Set();
 let notificationsEnabled = false;
 let reminderInterval = null;
+let suppressAuthReset = false; // prevents onAuthStateChanged from resetting UI during intentional sign-outs
 
 // ─────────────────────────────────────────
 // DOM Elements - Auth
@@ -27,6 +28,7 @@ const googleBtn = document.getElementById('google-btn');
 const authError = document.getElementById('auth-error');
 const authSuccess = document.getElementById('auth-success');
 const authThemeBtn = document.getElementById('auth-theme-btn');
+const resendVerificationBtn = document.getElementById('resend-verification-btn');
 
 // ─────────────────────────────────────────
 // DOM Elements - Logout Modal
@@ -388,15 +390,61 @@ authSubmit.addEventListener('click', async () => {
 
   try {
     if (authMode === 'login') {
-      await auth.signInWithEmailAndPassword(email, password);
+      const credential = await auth.signInWithEmailAndPassword(email, password);
+      if (!credential.user.emailVerified) {
+        suppressAuthReset = true;
+        await auth.signOut();
+        suppressAuthReset = false;
+        showAuthError('Please verify your email before signing in. Check your inbox.');
+        resendVerificationBtn.style.display = 'block';
+        resendVerificationBtn.dataset.email = email;
+        resendVerificationBtn.dataset.password = password;
+        authSubmit.disabled = false;
+        authSubmit.textContent = 'Sign In';
+        return;
+      }
     } else {
-      await auth.createUserWithEmailAndPassword(email, password);
-      showAuthSuccess('Account created! You are now signed in.');
+      const credential = await auth.createUserWithEmailAndPassword(email, password);
+      await credential.user.sendEmailVerification();
+      suppressAuthReset = true;
+      await auth.signOut();
+      suppressAuthReset = false;
+      showAuthSuccess('Account created! A verification email has been sent. Please verify your email then sign in.');
+      authSubmit.disabled = false;
+      authSubmit.textContent = 'Sign In';
+      // Switch to login tab
+      authTabs.forEach(t => t.classList.remove('active'));
+      document.querySelector('.auth-tab[data-tab="login"]').classList.add('active');
+      authMode = 'login';
+      authPass.autocomplete = 'current-password';
+      return;
     }
   } catch (e) {
     showAuthError(e.message);
     authSubmit.disabled = false;
     authSubmit.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+  }
+});
+
+// Resend verification email
+resendVerificationBtn.addEventListener('click', async () => {
+  const email = resendVerificationBtn.dataset.email;
+  const password = resendVerificationBtn.dataset.password;
+  resendVerificationBtn.disabled = true;
+  resendVerificationBtn.textContent = 'Sending…';
+  try {
+    const credential = await auth.signInWithEmailAndPassword(email, password);
+    await credential.user.sendEmailVerification();
+    suppressAuthReset = true;
+    await auth.signOut();
+    suppressAuthReset = false;
+    showAuthSuccess('Verification email resent! Check your inbox.');
+    resendVerificationBtn.textContent = 'Resend verification email';
+    resendVerificationBtn.disabled = false;
+  } catch (e) {
+    showAuthError(e.message);
+    resendVerificationBtn.textContent = 'Resend verification email';
+    resendVerificationBtn.disabled = false;
   }
 });
 
@@ -435,13 +483,22 @@ auth.onAuthStateChanged(async (user) => {
   // Hide loading screen
   loadingScreen.classList.add('hidden');
   
-  if (user) {
+  if (user && user.emailVerified) {
     authView.style.display = 'none';
     appView.style.display = '';
     userLabel.textContent = user.email;
+    resendVerificationBtn.style.display = 'none';
     await loadTasks();
     render();
   } else {
+    if (user && !user.emailVerified) {
+      // Signed in but not verified — sign out silently
+      suppressAuthReset = true;
+      await auth.signOut();
+      suppressAuthReset = false;
+      return;
+    }
+    if (suppressAuthReset) return;
     authView.style.display = '';
     appView.style.display = 'none';
     tasks = [];
@@ -451,6 +508,7 @@ auth.onAuthStateChanged(async (user) => {
     authSubmit.disabled = false;
     authSubmit.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
     hideAuthMessages();
+    resendVerificationBtn.style.display = 'none';
   }
 });
 
