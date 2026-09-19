@@ -106,6 +106,7 @@
         <div class="header-actions">
           <span id="user-email-label"></span>
           <button id="theme-btn">☀ Light</button>
+          <button id="settings-btn" title="Account Settings">⚙ Settings</button>
           <button id="logout-btn">Sign out</button>
         </div>
       </div>
@@ -197,6 +198,65 @@
       <p class="modal-message" id="info-modal-message"></p>
       <div class="modal-actions">
         <button id="info-modal-close" class="modal-btn modal-btn-confirm">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Settings Modal -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal-card settings-modal-card">
+      <p class="modal-title">Account Settings</p>
+      
+      <!-- Settings Messages -->
+      <div id="settings-error" class="auth-error"></div>
+      <div id="settings-success" class="auth-success"></div>
+      
+      <!-- Change Email Section -->
+      <div class="settings-section">
+        <p class="settings-label">Change Email</p>
+        <input 
+          type="email" 
+          id="settings-new-email" 
+          class="auth-input" 
+          placeholder="New email address" 
+          autocomplete="email"
+        />
+      </div>
+      
+      <!-- Change Password Section -->
+      <div class="settings-section">
+        <p class="settings-label">Change Password</p>
+        <input 
+          type="password" 
+          id="settings-new-password" 
+          class="auth-input" 
+          placeholder="New password (min 6 characters)" 
+          autocomplete="new-password"
+        />
+        <input 
+          type="password" 
+          id="settings-confirm-password" 
+          class="auth-input" 
+          placeholder="Confirm new password" 
+          autocomplete="new-password"
+        />
+      </div>
+      
+      <!-- Current Password for verification -->
+      <div class="settings-section">
+        <p class="settings-label">Current Password (required)</p>
+        <input 
+          type="password" 
+          id="settings-current-password" 
+          class="auth-input" 
+          placeholder="Enter current password to confirm" 
+          autocomplete="current-password"
+        />
+      </div>
+      
+      <div class="modal-actions">
+        <button id="settings-cancel" class="modal-btn modal-btn-cancel">Cancel</button>
+        <button id="settings-save" class="modal-btn modal-btn-primary">Save Changes</button>
       </div>
     </div>
   </div>

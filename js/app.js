@@ -38,6 +38,20 @@ const logoutCancel = document.getElementById('logout-cancel');
 const logoutConfirm = document.getElementById('logout-confirm');
 
 // ─────────────────────────────────────────
+// DOM Elements - Settings Modal
+// ─────────────────────────────────────────
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const settingsCancel = document.getElementById('settings-cancel');
+const settingsSave = document.getElementById('settings-save');
+const settingsNewEmail = document.getElementById('settings-new-email');
+const settingsNewPassword = document.getElementById('settings-new-password');
+const settingsConfirmPassword = document.getElementById('settings-confirm-password');
+const settingsCurrentPassword = document.getElementById('settings-current-password');
+const settingsError = document.getElementById('settings-error');
+const settingsSuccess = document.getElementById('settings-success');
+
+// ─────────────────────────────────────────
 // DOM Elements - App
 // ─────────────────────────────────────────
 const taskInput = document.getElementById('task-input');
@@ -136,6 +150,160 @@ logoutModal.addEventListener('click', (e) => {
   if (e.target === logoutModal) {
     hideLogoutModal();
   }
+});
+
+// ─────────────────────────────────────────
+// Settings Modal
+// ─────────────────────────────────────────
+function showSettingsModal() {
+  const user = auth.currentUser;
+  
+  // Check if user signed in with Google (no password auth)
+  const hasPasswordProvider = user.providerData.some(p => p.providerId === 'password');
+  
+  if (!hasPasswordProvider) {
+    // Show info modal for Google users
+    showInfoModal('Google Account', 
+      'You signed in with Google. To change your email or password, please manage your account through Google.');
+    return;
+  }
+  
+  // Clear previous inputs and messages
+  settingsNewEmail.value = '';
+  settingsNewPassword.value = '';
+  settingsConfirmPassword.value = '';
+  settingsCurrentPassword.value = '';
+  hideSettingsMessages();
+  settingsModal.classList.add('show');
+}
+
+function hideSettingsModal() {
+  settingsModal.classList.remove('show');
+}
+
+function showSettingsError(msg) {
+  settingsError.textContent = msg;
+  settingsError.classList.add('show');
+  settingsSuccess.classList.remove('show');
+}
+
+function showSettingsSuccess(msg) {
+  settingsSuccess.textContent = msg;
+  settingsSuccess.classList.add('show');
+  settingsError.classList.remove('show');
+}
+
+function hideSettingsMessages() {
+  settingsError.classList.remove('show');
+  settingsSuccess.classList.remove('show');
+}
+
+settingsBtn.addEventListener('click', showSettingsModal);
+settingsCancel.addEventListener('click', hideSettingsModal);
+
+// Close modal on overlay click
+settingsModal.addEventListener('click', (e) => {
+  if (e.target === settingsModal) {
+    hideSettingsModal();
+  }
+});
+
+// Save settings (change email and/or password)
+settingsSave.addEventListener('click', async () => {
+  const newEmail = settingsNewEmail.value.trim();
+  const newPassword = settingsNewPassword.value;
+  const confirmPassword = settingsConfirmPassword.value;
+  const currentPassword = settingsCurrentPassword.value;
+  
+  // Validate at least one change is requested
+  if (!newEmail && !newPassword) {
+    showSettingsError('Enter a new email or password to update.');
+    return;
+  }
+  
+  // Validate current password is provided
+  if (!currentPassword) {
+    showSettingsError('Please enter your current password to confirm changes.');
+    return;
+  }
+  
+  // Validate password confirmation if changing password
+  if (newPassword) {
+    if (newPassword.length < 6) {
+      showSettingsError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showSettingsError('New passwords do not match.');
+      return;
+    }
+  }
+  
+  settingsSave.disabled = true;
+  settingsSave.innerHTML = '<span class="spinner"></span>Saving…';
+  hideSettingsMessages();
+  
+  const user = auth.currentUser;
+  
+  try {
+    // Re-authenticate first
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+    await user.reauthenticateWithCredential(credential);
+    
+    let emailChanged = false;
+    let passwordChanged = false;
+    
+    // Update email if provided
+    if (newEmail && newEmail !== user.email) {
+      await user.verifyBeforeUpdateEmail(newEmail);
+      emailChanged = true;
+    }
+    
+    // Update password if provided
+    if (newPassword) {
+      await user.updatePassword(newPassword);
+      passwordChanged = true;
+    }
+    
+    // Show success message
+    let successMsg = '';
+    if (emailChanged && passwordChanged) {
+      successMsg = 'Password updated! A verification email has been sent to your new email.';
+    } else if (emailChanged) {
+      successMsg = 'A verification email has been sent to your new email address.';
+    } else if (passwordChanged) {
+      successMsg = 'Password updated successfully!';
+    }
+    
+    showSettingsSuccess(successMsg);
+    
+    // Clear the input fields
+    settingsNewEmail.value = '';
+    settingsNewPassword.value = '';
+    settingsConfirmPassword.value = '';
+    settingsCurrentPassword.value = '';
+    
+    // Update displayed email if changed
+    if (emailChanged) {
+      // Email will change once user verifies the new address
+    }
+    
+  } catch (e) {
+    let errorMsg = e.message;
+    if (e.code === 'auth/wrong-password') {
+      errorMsg = 'Current password is incorrect.';
+    } else if (e.code === 'auth/email-already-in-use') {
+      errorMsg = 'This email is already in use by another account.';
+    } else if (e.code === 'auth/invalid-email') {
+      errorMsg = 'Please enter a valid email address.';
+    } else if (e.code === 'auth/requires-recent-login') {
+      errorMsg = 'Please sign out and sign in again before changing your credentials.';
+    }
+    showSettingsError(errorMsg);
+  }
+  
+  settingsSave.disabled = false;
+  settingsSave.textContent = 'Save Changes';
 });
 
 // ─────────────────────────────────────────
@@ -930,204 +1098,6 @@ infoModalClose.addEventListener('click', () => infoModal.classList.remove('show'
 infoModal.addEventListener('click', (e) => {
   if (e.target === infoModal) infoModal.classList.remove('show');
 });
-
-// ─────────────────────────────────────────
-// Voice Input — Whisper API (MediaRecorder)
-// ─────────────────────────────────────────
-const micBtn        = document.getElementById('mic-btn');
-const voiceStatus   = document.getElementById('voice-status');
-const voiceStatusTx = document.getElementById('voice-status-text');
-const voiceTimer    = document.getElementById('voice-timer');
-const apiKeyModal   = document.getElementById('api-key-modal');
-const apiKeyInput   = document.getElementById('api-key-input');
-const apiKeyCancel  = document.getElementById('api-key-cancel');
-const apiKeySave    = document.getElementById('api-key-save');
-
-let mediaRecorder   = null;
-let audioChunks     = [];
-let isRecording     = false;
-let timerInterval   = null;
-let recordSeconds   = 0;
-
-// ── API Key Modal ──────────────────────────
-function getApiKey() {
-  return localStorage.getItem('openai_api_key') || '';
-}
-
-function openApiKeyModal(thenStart = false) {
-  apiKeyInput.value = getApiKey();
-  apiKeyModal.classList.add('show');
-  apiKeyInput.focus();
-  apiKeySave.onclick = () => {
-    const key = apiKeyInput.value.trim();
-    if (!key.startsWith('sk-')) {
-      apiKeyInput.style.borderColor = 'var(--red)';
-      apiKeyInput.placeholder = 'Must start with sk-…';
-      return;
-    }
-    apiKeyInput.style.borderColor = '';
-    localStorage.setItem('openai_api_key', key);
-    apiKeyModal.classList.remove('show');
-    if (thenStart) startRecording();
-  };
-}
-
-apiKeyCancel.addEventListener('click', () => apiKeyModal.classList.remove('show'));
-apiKeyModal.addEventListener('click', (e) => {
-  if (e.target === apiKeyModal) apiKeyModal.classList.remove('show');
-});
-
-// ── Timer ──────────────────────────────────
-function startTimer() {
-  recordSeconds = 0;
-  voiceTimer.textContent = '0:00';
-  timerInterval = setInterval(() => {
-    recordSeconds++;
-    const m = Math.floor(recordSeconds / 60);
-    const s = String(recordSeconds % 60).padStart(2, '0');
-    voiceTimer.textContent = `${m}:${s}`;
-    // Max 60 s to keep Whisper cost low
-    if (recordSeconds >= 60) stopRecording();
-  }, 1000);
-}
-
-function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-}
-
-// ── Recording ─────────────────────────────
-async function startRecording() {
-  if (!navigator.mediaDevices) {
-    showInfoModal('🎤 Not Available', 'Microphone access requires a secure (HTTPS) connection.');
-    return;
-  }
-
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
-    const msgs = {
-      NotAllowedError:  'Microphone permission denied. Please allow mic access in your browser and try again.',
-      NotFoundError:    'No microphone found. Please connect a microphone and try again.',
-    };
-    showInfoModal('🎤 Mic Error', msgs[err.name] || `Could not access microphone: ${err.message}`);
-    return;
-  }
-
-  audioChunks = [];
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.addEventListener('dataavailable', e => {
-    if (e.data.size > 0) audioChunks.push(e.data);
-  });
-  mediaRecorder.addEventListener('stop', () => {
-    stream.getTracks().forEach(t => t.stop());
-    transcribeAudio();
-  });
-
-  mediaRecorder.start();
-  isRecording = true;
-  micBtn.classList.add('recording');
-  voiceStatus.style.display  = 'flex';
-  voiceStatus.classList.remove('transcribing');
-  voiceStatusTx.textContent  = 'Recording… click mic to stop';
-  voiceTimer.style.display   = 'inline';
-  startTimer();
-}
-
-function stopRecording() {
-  if (!isRecording || !mediaRecorder) return;
-  mediaRecorder.stop();
-  isRecording = false;
-  micBtn.classList.remove('recording');
-  micBtn.classList.add('transcribing');
-  micBtn.disabled = true;
-  stopTimer();
-  voiceStatus.classList.add('transcribing');
-  voiceStatusTx.textContent = 'Transcribing…';
-  voiceTimer.style.display  = 'none';
-}
-
-// ── Whisper API Call ──────────────────────
-async function transcribeAudio() {
-  const key = getApiKey();
-  const blob = new Blob(audioChunks, { type: 'audio/webm' });
-
-  const form = new FormData();
-  form.append('file', blob, 'recording.webm');
-  form.append('model', 'whisper-1');
-  form.append('language', 'en');
-
-  let result;
-  try {
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}` },
-      body: form,
-    });
-
-    if (res.status === 401) {
-      voiceReset();
-      showInfoModal('🔑 Invalid API Key', 'Your OpenAI API key is invalid or expired. Click the key icon on the mic button to update it.');
-      localStorage.removeItem('openai_api_key');
-      return;
-    }
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `HTTP ${res.status}`);
-    }
-
-    result = await res.json();
-  } catch (err) {
-    voiceReset();
-    showInfoModal('🎤 Transcription Failed', `Could not transcribe audio: ${err.message}`);
-    return;
-  }
-
-  voiceReset();
-  const text = (result.text || '').trim();
-  if (text) {
-    taskInput.value = text;
-    taskInput.focus();
-    showToast('Voice input ready — press Enter to add');
-  } else {
-    showToast('No speech detected in recording');
-  }
-}
-
-function voiceReset() {
-  micBtn.classList.remove('recording', 'transcribing');
-  micBtn.disabled      = false;
-  voiceStatus.style.display = 'none';
-  voiceStatus.classList.remove('transcribing');
-  voiceStatusTx.textContent = '';
-  voiceTimer.textContent    = '0:00';
-  audioChunks = [];
-  mediaRecorder = null;
-}
-
-// ── Mic Button Click ──────────────────────
-micBtn.addEventListener('click', () => {
-  if (isRecording) {
-    stopRecording();
-    return;
-  }
-  const key = getApiKey();
-  if (!key) {
-    openApiKeyModal(true);
-  } else {
-    startRecording();
-  }
-});
-
-// Long-press mic = open key settings
-let micHoldTimer = null;
-micBtn.addEventListener('mousedown', () => {
-  micHoldTimer = setTimeout(() => openApiKeyModal(false), 800);
-});
-micBtn.addEventListener('mouseup', () => clearTimeout(micHoldTimer));
-micBtn.addEventListener('mouseleave', () => clearTimeout(micHoldTimer));
 
 // ─────────────────────────────────────────
 // Global Keyboard Shortcuts
